@@ -1,0 +1,76 @@
+---
+title: "Li et al., 2020 - marker analysis"
+author: "Martin Proks"
+date: '`r Sys.Date()`'
+knit: (function(inputFile, encoding) { 
+      rmarkdown::render(inputFile,
+                        encoding=encoding,
+                        output_format='all',
+                        output_dir='../reports/')})
+output:
+  # To create PDF report, uncomment below
+  pdf_document:
+   toc: yes
+  html_document:
+    number_sections: yes
+    theme: yeti
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    dev: png
+---
+
+```{r knitr, include = FALSE}
+DOCNAME = knitr::current_input()
+knitr::opts_chunk$set(autodep        = TRUE,
+                      cache          = FALSE,
+                      cache.path     = paste0("cache/", DOCNAME, "/"),
+                      cache.comments = TRUE,
+                      echo           = TRUE,
+                      error          = FALSE,
+                      fig.align      = "center",
+                      fig.path       = paste0("../reports/figures/", DOCNAME, "/"),
+                      fig.width      = 10,
+                      fig.height     = 8,
+                      message        = FALSE,
+                      warning        = FALSE)
+```
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+li <- readRDS('~/Dropbox (Brickman Dropbox)/sc_seq_analysis/Blacky/services/scRNAviz/data/li_et_al_2020_endoderm.rds')
+```
+
+```{r}
+Idents(li) <- 'Subpopulation'
+m <- FindAllMarkers(li, only.pos = T)
+```
+
+```{r}
+m_filt <- m %>%
+    group_by(cluster) %>%
+    slice_max(n = 20, order_by = avg_log2FC) %>%
+    filter(cluster %in% c('hAL', 'hMG.1')) %>%
+    filter(p_val_adj < 0.05 & avg_log2FC > 1)
+```
+
+```{r, fig.width=20}
+li_sub <- li[, li$Subpopulation %in% c('hAL', 'hMG.1')]
+DotPlot(li_sub, features = unique(m_filt$gene)) + theme(axis.text.x = element_text(angle = 45, hjust=1))
+```
+
+```{r}
+for (gene in unique(m_filt$gene)) {
+  p <- VlnPlot(li_sub, features = gene)
+  print(p)
+}
+```
+
+# Session info
+
+```{r session-info, cache = FALSE}
+devtools::session_info()
+```

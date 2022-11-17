@@ -1,0 +1,367 @@
+---
+title: "CAT visualization"
+author: "Martin Proks"
+date: '`r Sys.Date()`'
+knit: (function(inputFile, encoding) { 
+      rmarkdown::render(inputFile,
+                        encoding=encoding,
+                        output_format='all',
+                        output_dir='../reports/')})
+output:
+  # To create PDF report, uncomment below
+  pdf_document:
+   toc: yes
+  html_document:
+    number_sections: yes
+    theme: yeti
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    dev: png
+---
+
+```{r knitr, include = FALSE}
+DOCNAME = knitr::current_input()
+knitr::opts_chunk$set(autodep        = TRUE,
+                      cache          = FALSE,
+                      cache.path     = paste0("cache/", DOCNAME, "/"),
+                      cache.comments = TRUE,
+                      echo           = TRUE,
+                      error          = FALSE,
+                      fig.align      = "center",
+                      fig.path       = paste0("../reports/figures/", DOCNAME, "/"),
+                      fig.width      = 10,
+                      fig.height     = 8,
+                      message        = FALSE,
+                      warning        = FALSE)
+```
+
+## UMAP
+
+```{r, message=FALSE}
+library(Seurat)
+library(SeuratDisk)
+library(dplyr)
+library(ggplot2)
+
+random_seed <- 42
+
+li <- readRDS("~/Dropbox (Brickman Dropbox)/sc_seq_analysis/Blacky/Other_labs/Li_et_al_2020/data/processed/Li_et_al_2020_endoderm.rds")
+```
+
+```{r}
+DimPlot(li, group.by = "Subpopulation", 
+        cols=c("#de5253", "#378A00", "#999999", "#a985ca", "#a3786f", "#e992ce", "#ff993e", "#c9ca4e", "#56b356", "#45cbd9", "#4c92c3")
+)
+```
+
+### Markers
+
+```{r, message=FALSE}
+Idents(li) <- 'Subpopulation'
+write.csv(
+  FindMarkers(li, ident.1 = 'hFG.2', ident.2 = c('hAL', 'hMG.1')) %>% filter(p_val_adj < 0.05, avg_log2FC > 0.5),
+  file = '../data/processed/05_hFG.2_vs_hAL+hMG.1.csv'
+)
+write.csv(
+  FindMarkers(li, ident.1 = 'hAL', ident.2 = c('hFG.2', 'hMG.1')) %>% filter(p_val_adj < 0.05, avg_log2FC > 0.5),
+  file = '../data/processed/05_hAL_vs_hFG.2+hMG.1.csv'
+)
+write.csv(
+  FindMarkers(li, ident.1 = 'hMG.1', ident.2 = c('hAL', 'hFG.2')) %>% filter(p_val_adj < 0.05, avg_log2FC > 0.5),
+  file = '../data/processed/05_hMG.1_vs_hAL+hFG.2.csv'
+)
+```
+
+```{r}
+marker_list <- c('05_hFG.2_vs_hAL+hMG.1.csv', '05_hAL_vs_hFG.2+hMG.1.csv', '05_hMG.1_vs_hAL+hFG.2.csv')
+markers <- lapply(marker_list, function(x){
+  df <- read.csv(paste0('../data/processed/', x)) %>% arrange(desc(avg_log2FC)) %>% head(20)
+  df['cluster'] <- stringr::str_split(x, '_', simplify = T)[2]
+  return (df)
+})
+markers <- do.call("rbind", markers)
+markers
+```
+
+## Subcluster vitro
+
+```{r}
+vitro <- readRDS("../data/processed/01_fung.filtered.RDS")
+vitro <- vitro[, vitro$Condition %in% c('ADE_111_1213', 'VFG83_1025')]
+
+vitro <- NormalizeData(vitro)
+vitro <- FindVariableFeatures(vitro, selection.method = "vst", nfeatures = 2000)
+vitro <- ScaleData(vitro)
+vitro <- RunPCA(vitro, features = VariableFeatures(object = vitro), seed.use = random_seed)
+
+vitro <- FindNeighbors(vitro, dims = 1:20)
+vitro <- FindClusters(vitro, resolution = 0.7, random.seed = random_seed)
+vitro <- RunUMAP(vitro, dims = 1:20, seed.use = random_seed)
+
+DimPlot(vitro, group.by = "Stage")
+DimPlot(vitro, group.by = "seurat_clusters")
+
+saveRDS(vitro, file = "../data/processed/05_hADE_VFG.RDS")
+```
+
+### Run CAT
+
+```{r, eval=FALSE}
+# Convert to h5ad
+vitro@assays$RNA@scale.data <- matrix()
+SaveH5Seurat(vitro, filename = "../data/processed/05_hADE_VFG.h5Seurat")
+Convert("../data/processed/05_hADE_VFG.h5Seurat", dest = "h5ad", overwrite = TRUE)
+```
+
+```{bash, eval=FALSE}
+catcli \
+  --ds1 ../data/processed/04_hADE_VFG_CAT.h5ad \
+  --ds1_name vitro \
+  --ds1_cluster Stage \
+  --ds2 ../data/external/li_et_al_2020_endoderm.h5ad \
+  --ds2_name vivo \
+  --ds2_cluster Subpopulation \
+  --output ../CAT/vitro-vs-vivo \
+  --n_iter 1000 \
+  --distance euclidean
+
+catcli \
+  --ds1 ../data/processed/05_hADE_VFG.h5ad \
+  --ds1_name vitrosub \
+  --ds1_cluster seurat_clusters \
+  --ds2 ../data/external/li_et_al_2020_endoderm.h5ad \
+  --ds2_name vivo \
+  --ds2_cluster Subpopulation \
+  --output ../CAT/vitrosub-vs-vivo \
+  --n_iter 1000 \
+  --distance euclidean
+```
+
+### Sankey plots
+
+```{r, message=FALSE, warning=FALSE}
+# library(plotly)
+# library(plyr)
+# library(dplyr)
+# library(readxl)
+# 
+# parse_sheet <- function(excel_sheet, excel_file) {
+#   df <- readxl::read_excel(excel_file, sheet = excel_sheet)
+#   df <- df[, c('...1', 'dist mean', 'significant')]
+#   df['source'] <- excel_sheet
+#   colnames(df) <- c('target', 'value', 'significant', 'source')
+#   
+#   return (df)
+# }
+
+# cat_file <- '../CAT/vitrosub-vs-vivo/vitrosub_vivo_euclidean.xlsx'
+# sheets <- excel_sheets(cat_file)[-1]
+# 
+# dfs <- lapply(sheets, parse_sheet, excel_file=cat_file)
+# dfs <- do.call("rbind", dfs)
+# labels <- unique(c(dfs$source, dfs$target))
+# 
+# dfs$source_num <- match(dfs$source, labels) -1
+# dfs$target_num <- match(dfs$target, labels) -1
+# dfs$color <- mapvalues(dfs$significant, from=c(TRUE, FALSE), to=c("#4c92c3","#cccccc"))
+# dfs$updated_value <- abs(dfs$value - max(dfs$value))
+# 
+# plot_ly(
+#   type = "sankey",
+#   orientation = "h",
+# 
+#   node = list(
+#     label = labels,
+#     pad = 15,
+#     thickness = 20,
+#     line = list(
+#       color = "black",
+#       width = 0.5
+#     )
+#   ),
+# 
+#   link = list(
+#     source = dfs$source_num,
+#     target = dfs$target_num,
+#     color = dfs$color,
+#     value =  dfs$value
+#   )
+# ) %>% layout(
+#     title = "Vitro vs Li et al., 2020",
+#     font = list(
+#       size = 20
+#     ) 
+#   ) %>% config(
+#       toImageButtonOptions = list(format = "svg", filename = "myplot.svg")
+#     )
+```
+
+## Bulk RNA-seq
+
+```{r, message=FALSE}
+library(dplyr)
+library(DESeq2)
+library(pheatmap)
+
+bulk <- read.table(file = "../data/bulkRNAseq/Fung_RNAseq_dataset.txt", sep = '\t', header = T)
+rownames(bulk) <- make.names(bulk$X, unique = TRUE)
+bulk <- bulk[, c('H9_ES_A', 'H9_ES_B', 'H9_ES_C', 
+                 'H9_ADE_A', 'H9_ADE_B', 'H9_ADE_C', 
+                 'H9_VFG8_A', 'H9_VFG8_B', 'H9_VFG8_C')]
+
+bulk_meta <- data.frame(row.names = colnames(bulk))
+bulk_meta['condition'] <- as.factor(c(rep('ES', 3), rep('ADE', 3), rep('VFG', 3)))
+```
+
+### ADE vs ES
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = bulk,
+                              colData = bulk_meta,
+                              design = ~condition)
+colData(dds)$condition <- relevel(colData(dds)$condition, "ADE", ref="ES")
+dds <- DESeq(dds)
+
+res <- results(dds, contrast = c("condition", "ADE", "ES"))
+ade <- as.data.frame(res)
+ade_up <- ade %>% filter(log2FoldChange > 1.5 & padj < 0.05)
+ade_up <- ade_up[order(ade_up$log2FoldChange, decreasing=T), ]
+ade_genes <- head(rownames(ade_up), 20)
+ade_up$gene <- rownames(ade_up)
+ade_up$cond <- 'ADE'
+```
+
+### VFG vs ES
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = bulk,
+                              colData = bulk_meta,
+                              design = ~condition)
+colData(dds)$condition <- relevel(colData(dds)$condition, "VFG", ref="ES")
+dds <- DESeq(dds)
+res <- results(dds, contrast = c("condition", "VFG", "ES"))
+
+vfg <- as.data.frame(res)
+vfg_up <- vfg %>% filter(log2FoldChange > 1.5 & padj < 0.05)
+vfg_up <- vfg_up[order(vfg_up$log2FoldChange, decreasing=T), ]
+vfg_genes <- head(rownames(vfg_up), 20)
+
+vfg_up$gene <- rownames(vfg_up)
+vfg_up$cond <- 'VFG'
+```
+
+### Normalized counts
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = bulk,
+                              colData = bulk_meta,
+                              design = ~condition)
+dds <- DESeq(dds)
+dds <- estimateSizeFactors(dds)
+counts <- counts(dds, normalized=TRUE)
+```
+
+```{r}
+annotation <- rbind(
+  ade_up %>% head(20) %>% select(cond),
+  vfg_up %>% head(20) %>% select(cond)
+)
+
+counts.log <- log2(counts[rownames(counts) %in% rownames(annotation), ])
+is.na(counts.log) <- sapply(counts.log, is.infinite) #replace -inf values with 0
+counts.log[is.na(counts.log)] <- 0
+
+pheatmap(counts.log, scale="row", border_color = NA,fontsize = 8, annotation_row = annotation)
+```
+
+```{r}
+sc_genes <- markers %>% distinct(X, .keep_all = TRUE) %>% select(X, cluster)
+sc_genes <- data.frame(
+  row.names = sc_genes$X,
+  cond = sc_genes$cluster
+)
+common_genes <- intersect(rownames(counts), rownames(sc_genes))
+
+counts.log <- log2(counts[common_genes, ])
+is.na(counts.log) <- sapply(counts.log, is.infinite) #replace -inf values with 0
+counts.log[is.na(counts.log)] <- 0
+
+pheatmap(counts.log, scale="row", border_color = NA,fontsize = 8, annotation_row = sc_genes)
+```
+
+### Combine Bulk + scRNAseq
+
+```{r}
+sc_genes <- markers %>% distinct(X, .keep_all = TRUE) %>% select(X, cluster)
+sc_genes <- data.frame(
+  row.names = sc_genes$X,
+  cond = sc_genes$cluster,
+  method = 'scRNA'
+)
+
+annot.row <- rbind(
+  ade_up %>% head(20) %>% select(cond),
+  vfg_up %>% head(20) %>% select(cond)
+)
+annot.row$method <- 'bulk'
+annot.row <- rbind(annot.row, sc_genes)
+
+counts.log <- log2(counts[rownames(counts) %in% rownames(annot.row), ])
+is.na(counts.log) <- sapply(counts.log, is.infinite) #replace -inf values with 0
+counts.log[is.na(counts.log)] <- 0
+
+pheatmap(counts.log, scale="row", border_color = NA,fontsize = 8, annotation_row = annot.row)
+```
+
+### scRNA hAL + hMG.1
+
+```{r}
+sc_genes <- markers %>% filter(cluster %in% c('hAL', 'hMG.1')) %>% distinct(X, .keep_all = TRUE) %>% select(X, cluster)
+sc_genes <- data.frame(
+  row.names = sc_genes$X,
+  cond = sc_genes$cluster,
+  method = 'scRNA'
+)
+
+annot.row <- rbind(
+  ade_up %>% head(20) %>% select(cond),
+  vfg_up %>% head(20) %>% select(cond)
+)
+annot.row$method <- 'bulk'
+annot.row <- rbind(annot.row, sc_genes)
+
+counts.log <- log2(counts[rownames(counts) %in% rownames(annot.row), ])
+is.na(counts.log) <- sapply(counts.log, is.infinite) #replace -inf values with 0
+counts.log[is.na(counts.log)] <- 0
+
+pheatmap(counts.log, scale="row", border_color = NA,fontsize = 8, annotation_row = annot.row)
+```
+
+```{r}
+# bulk <- read.table(file = "../data/bulkRNAseq/plot9p001.txt")
+# bulk_filt <- bulk %>% filter(baseMean > 100 & log2FoldChange > 2.5 & padj < 0.05)
+# %>% arrange(desc(log2FoldChange))
+```
+
+```{r}
+# common_genes <- intersect(rownames(bulk_filt), rownames(li))
+# paste0("Bulk genes: ", nrow(bulk_filt))
+# paste0("Li et al., 2020 genes: ", nrow(li))
+# paste0("Common genes: ", length(common_genes))
+```
+
+```{r}
+# li_subset <- subset(x = li, subset = Subpopulation %in% c("hAL", "hMG.1"))
+# # li[, li$]
+# 
+# mapal <- colorRampPalette(RColorBrewer::brewer.pal(11,"RdBu"))(256)
+# DoHeatmap(li_subset, features=common_genes, group.by = "Subpopulation") + 
+#   scale_fill_gradientn(colours = rev(mapal))
+```
+
+# Session info
+
+```{r session-info, cache = FALSE}
+devtools::session_info()
+```

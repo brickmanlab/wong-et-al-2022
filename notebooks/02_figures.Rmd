@@ -1,0 +1,78 @@
+---
+title: "04_figures"
+author: "Martin Proks"
+date: '`r Sys.Date()`'
+knit: (function(inputFile, encoding) { 
+      rmarkdown::render(inputFile,
+                        encoding=encoding,
+                        output_format='all',
+                        output_dir='../reports/')})
+output:
+  # To create PDF report, uncomment below
+  pdf_document:
+   toc: yes
+  html_document:
+    number_sections: yes
+    theme: yeti
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    dev: png
+---
+
+```{r knitr, include = FALSE}
+DOCNAME = knitr::current_input()
+knitr::opts_chunk$set(autodep        = TRUE,
+                      cache          = FALSE,
+                      cache.path     = paste0("cache/", DOCNAME, "/"),
+                      cache.comments = TRUE,
+                      echo           = TRUE,
+                      error          = FALSE,
+                      fig.align      = "center",
+                      fig.path       = paste0("../reports/figures/", DOCNAME, "/"),
+                      fig.width      = 10,
+                      fig.height     = 8,
+                      message        = FALSE,
+                      warning        = FALSE)
+```
+
+# Load data
+
+```{r}
+library(dplyr)
+library(readxl)
+library(Seurat)
+library(ggplot2)
+library(ggsignif)
+source('../scripts/helpers.R')
+```
+
+```{r}
+li <- readRDS('~/Dropbox (Brickman Dropbox)/sc_seq_analysis/Blacky/services/scRNAviz/data/li_et_al_2020_endoderm.rds')
+Idents(li) <- li@meta.data$Population
+```
+
+```{r}
+fung <- readRDS('../data/processed/01_fung.filtered.RDS')
+fung <- NormalizeData(fung)
+fung <- ScaleData(fung)
+
+Idents(fung) <- fung@meta.data$Stage
+fung <- fung[, fung$Condition %in% c('ADE_111_1213', 'VFG83_1025')]
+```
+
+```{r}
+xls_genes <- read_excel('../data/Gene_list_for_violin_in_vitro_in_vivo_260221.xlsx')$Gene_list_for_violin_in_vitro_in_vivo_260221
+common_genes <- intersect(rownames(fung), rownames(li))
+genes <- intersect(xls_genes, common_genes)
+
+print('Missing genes from the list')
+print(setdiff(xls_genes, genes))
+```
+
+# Version #3
+
+```{r warning=FALSE}
+plot_violins(fung, li, genes, show_points = T, sig = T)
+```
+

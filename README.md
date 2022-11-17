@@ -1,0 +1,13 @@
+# Wong et al 2021
+
+This is a MARS-seq experiment on samples:
+
+* VFG53_-BMP+BMP_1109
+* VFG83_-BMP+BMP_1109
+* VFG53_1025
+* VFG83_1025
+* VFG53_-BMP_1101
+* VFG83_-BMP_1101
+* VFG53_-BMP+FGF_1109
+* VFG83_-BMP+FGF_1109
+* ADE_111_1213

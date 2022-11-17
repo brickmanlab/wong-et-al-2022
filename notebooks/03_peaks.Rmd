@@ -1,0 +1,97 @@
+---
+title: "03 - peaks"
+author: "Martin Proks"
+date: '`r Sys.Date()`'
+knit: (function(inputFile, encoding) { 
+      rmarkdown::render(inputFile,
+                        encoding=encoding,
+                        output_format='all',
+                        output_dir='../reports/')})
+output:
+  # To create PDF report, uncomment below
+  # pdf_document:
+  #   toc: yes
+  html_document:
+    number_sections: yes
+    theme: yeti
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    dev: png
+---
+
+```{r knitr, include = FALSE}
+DOCNAME = knitr::current_input()
+knitr::opts_chunk$set(autodep        = TRUE,
+                      cache          = FALSE,
+                      cache.path     = paste0("cache/", DOCNAME, "/"),
+                      cache.comments = TRUE,
+                      echo           = TRUE,
+                      error          = FALSE,
+                      fig.align      = "center",
+                      fig.path       = paste0("../reports/figures/", DOCNAME, "/"),
+                      fig.width      = 10,
+                      fig.height     = 8,
+                      message        = FALSE,
+                      warning        = FALSE)
+```
+
+# Peak intersections
+
+## Germ layers
+
+```bash
+cd ../data/raw/tissue
+cat PANC_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed > ../data/processed/germ_layers/endoderm.bed
+cat VEN_k27_rc.bed ADR_k27_rc.bed > ../data/processed/germ_layers/mesoderm.bed
+cat RPE_k27_rc.bed BRAIN_k27_rc.bed > ../data/processed/germ_layers/ectoderm.bed
+```
+
+## Tissues specific regions
+
+```bash
+bedtools intersect -a ADR_k27_rc.bed -b BRAIN_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed PANC_k27_rc.bed RPE_k27_rc.bed VEN_k27_rc.bed -v > ../data/processed/tissues/ADR_only.bed
+bedtools intersect -a BRAIN_k27_rc.bed -b ADR_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed PANC_k27_rc.bed RPE_k27_rc.bed VEN_k27_rc.bed -v > ../data/processed/tissues/BRAIN_only.bed
+bedtools intersect -a LIVER_k27_rc.bed -b ADR_k27_rc.bed BRAIN_k27_rc.bed LUNG_k27_rc.bed PANC_k27_rc.bed RPE_k27_rc.bed VEN_k27_rc.bed -v > ../data/processed/tissues/LIVER_only.bed
+bedtools intersect -a LUNG_k27_rc.bed -b ADR_k27_rc.bed BRAIN_k27_rc.bed LIVER_k27_rc.bed PANC_k27_rc.bed RPE_k27_rc.bed VEN_k27_rc.bed -v > ../data/processed/tissues/LUNG_only.bed
+bedtools intersect -a PANC_k27_rc.bed -b ADR_k27_rc.bed BRAIN_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed RPE_k27_rc.bed VEN_k27_rc.bed -v > ../data/processed/tissues/PANC_only.bed
+bedtools intersect -a RPE_k27_rc.bed -b ADR_k27_rc.bed BRAIN_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed PANC_k27_rc.bed VEN_k27_rc.bed -v > ../data/processed/tissues/RPE_only.bed
+bedtools intersect -a VEN_k27_rc.bed -b ADR_k27_rc.bed BRAIN_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed PANC_k27_rc.bed RPE_k27_rc.bed -v > ../data/processed/tissues/VEN_only.bed
+```
+
+### Extract germ layers unique regions
+
+```bash
+cd ../data/processed/germ_layers
+
+# unique regions per germ layer
+bedtools intersect -a endoderm.bed -b mesoderm.bed ectoderm.bed -v > endoderm_unique.bed
+bedtools intersect -a mesoderm.bed -b endoderm.bed ectoderm.bed -v > mesoderm_unique.bed
+bedtools intersect -a ectoderm.bed -b endoderm.bed mesoderm.bed -v > ectoderm_unique.bed
+
+# sort
+bedtools sort -i endoderm_unique.bed > endoderm_unique_sorted.bed
+bedtools sort -i mesoderm_unique.bed > mesoderm_unique_sorted.bed
+bedtools sort -i ectoderm_unique.bed > ectoderm_unique_sorted.bed
+
+# merge
+bedtools merge -i endoderm_unique_sorted.bed > endoderm_final.bed
+bedtools merge -i mesoderm_unique_sorted.bed > mesoderm_final.bed
+bedtools merge -i ectoderm_unique_sorted.bed > ectoderm_final.bed
+
+# cleanup
+rm *unique*.bed
+```
+
+## Common peaks between in vivo and in vitro samples
+
+```bash
+cp -R ../data/raw/invitro ../data/processed/invitro
+cd ../data/processed/invitro
+
+# split peaks based on their class
+python ../scripts/split.py --input invitro
+
+# intersection between in vivo and in vitro
+sh ../scripts/vitro_vivo_peaks.sh
+```

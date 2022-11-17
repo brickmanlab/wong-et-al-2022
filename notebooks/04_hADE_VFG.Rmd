@@ -1,0 +1,129 @@
+---
+title: "Subset hADE & VFG"
+author: "Martin Proks"
+date: '`r Sys.Date()`'
+knit: (function(inputFile, encoding) { 
+      rmarkdown::render(inputFile,
+                        encoding=encoding,
+                        output_format='all',
+                        output_dir='../reports/')})
+output:
+  # To create PDF report, uncomment below
+  pdf_document:
+   toc: yes
+  html_document:
+    number_sections: yes
+    theme: yeti
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    dev: png
+---
+
+```{r knitr, include = FALSE}
+DOCNAME = knitr::current_input()
+knitr::opts_chunk$set(autodep        = TRUE,
+                      cache          = FALSE,
+                      cache.path     = paste0("cache/", DOCNAME, "/"),
+                      cache.comments = TRUE,
+                      echo           = TRUE,
+                      error          = FALSE,
+                      fig.align      = "center",
+                      fig.path       = paste0("../reports/figures/", DOCNAME, "/"),
+                      fig.width      = 10,
+                      fig.height     = 8,
+                      message        = FALSE,
+                      warning        = FALSE)
+```
+
+# Introduction
+
+In this notebook we subset the data for hADE and VFG condition. Afterward, we
+compare the similarity to _in vivo_ experiment from _Li et al., 2020_. We will
+be using `CAT` tool.
+
+```{r}
+library(dplyr)
+library(Seurat)
+library(SeuratDisk)
+random_seed <- 12345
+
+adata <- readRDS('../data/processed/01_fung.filtered.RDS')
+adata <- adata[, adata$Condition %in% c('ADE_111_1213', 'VFG83_1025')]
+```
+
+```{r}
+adata.list <- SplitObject(adata, split.by = "Batch")
+adata.list <- lapply(X = adata.list, FUN = function(x) {
+    x <- NormalizeData(x)
+    x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+})
+
+features <- SelectIntegrationFeatures(object.list = adata.list)
+adata.anchors <- FindIntegrationAnchors(object.list = adata.list, anchor.features = features)
+adata.combined <- IntegrateData(anchorset = adata.anchors)
+```
+
+```{r}
+DefaultAssay(adata.combined) <- "integrated"
+
+adata.combined <- ScaleData(adata.combined, verbose = FALSE)
+adata.combined <- RunPCA(adata.combined, npcs = 30, verbose = FALSE)
+adata.combined <- RunUMAP(adata.combined, reduction = "pca", dims = 1:30, seed.use = random_seed)
+adata.combined <- FindNeighbors(adata.combined, reduction = "pca", dims = 1:30)
+adata.combined <- FindClusters(adata.combined, random.seed = random_seed)
+```
+
+```{r}
+DimPlot(adata.combined, reduction = "pca", group.by = "Batch")
+DimPlot(adata.combined, reduction = "umap")
+DimPlot(adata.combined, reduction = "umap", group.by = 'Stage')
+```
+
+## Marker analysis
+
+```{r}
+Idents(adata.combined) <- adata.combined$Stage
+m <- FindAllMarkers(adata.combined, only.pos = T)
+m_filt <- m %>%
+    group_by(cluster) %>%
+    filter(p_val_adj < 0.05)
+write.csv(m_filt, file="../data/processed/04_markers.csv")
+```
+
+## Save results
+
+```{r}
+saveRDS(adata.combined, file = '../data/processed/04_hADE_VFG.RDS')
+```
+
+# CAT preparation
+
+## Convert Fung
+
+```{r}
+adata <- readRDS('../data/processed/01_fung.filtered.RDS')
+adata <- adata[, adata$Condition %in% c('ADE_111_1213', 'VFG83_1025')]
+adata <- NormalizeData(adata)
+
+SaveH5Seurat(adata, filename = "../data/processed/04_hADE_VFG_CAT.h5Seurat", overwrite=T)
+Convert("../data/processed/04_hADE_VFG_CAT.h5Seurat", dest = "h5ad", overwrite=T)
+```
+
+## Convert Li et al., 2020
+
+```{r}
+li <- readRDS('~/Dropbox (Brickman Dropbox)/sc_seq_analysis/Blacky/services/scRNAviz/data/li_et_al_2020_endoderm.rds')
+li@meta.data$Population <- as.character(li@meta.data$Population)
+li@meta.data$Subpopulation <- as.character(li@meta.data$Subpopulation)
+li@assays$RNA@scale.data <- matrix()
+
+SaveH5Seurat(li, filename = "../data/processed/li_et_al_2020_endoderm.h5Seurat", overwrite=T)
+Convert("../data/processed/li_et_al_2020_endoderm.h5Seurat", dest = "h5ad", overwrite=T)
+```
+
+# Session info
+
+```{r session-info, cache = FALSE}
+devtools::session_info()
+```

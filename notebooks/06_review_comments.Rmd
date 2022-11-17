@@ -1,0 +1,136 @@
+---
+title: "06 - reviewer-comments"
+author: "Martin Proks"
+date: '`r Sys.Date()`'
+knit: (function(inputFile, encoding) { 
+      rmarkdown::render(inputFile,
+                        encoding=encoding,
+                        output_format='all',
+                        output_dir='../reports/')})
+output:
+  # To create PDF report, uncomment below
+  # pdf_document:
+  #   toc: yes
+  html_document:
+    number_sections: yes
+    theme: yeti
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    dev: png
+---
+
+```{r knitr, include = FALSE}
+DOCNAME = knitr::current_input()
+knitr::opts_chunk$set(autodep        = TRUE,
+                      cache          = FALSE,
+                      cache.path     = paste0("cache/", DOCNAME, "/"),
+                      cache.comments = TRUE,
+                      echo           = TRUE,
+                      error          = FALSE,
+                      fig.align      = "center",
+                      fig.path       = paste0("../reports/figures/", DOCNAME, "/"),
+                      fig.width      = 10,
+                      fig.height     = 8,
+                      message        = FALSE,
+                      warning        = FALSE)
+```
+
+# Revised Peak intersections
+
+Include `STOM_k27.bed` (one replicate only).
+
+## Germ layers
+
+```bash
+cd ../data/raw/tissue
+cat PANC_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed STOM_k27.bed > ../../processed/reviewer/germ_layers/endoderm.bed
+cat VEN_k27_rc.bed ADR_k27_rc.bed > ../../processed/reviewer/germ_layers/mesoderm.bed
+cat RPE_k27_rc.bed BRAIN_k27_rc.bed > ../../processed/reviewer/germ_layers/ectoderm.bed
+```
+
+## Tissues specific regions
+
+```bash
+bedtools intersect -a ADR_k27_rc.bed -b BRAIN_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed PANC_k27_rc.bed RPE_k27_rc.bed STOM_k27.bed VEN_k27_rc.bed -v > ../../processed/reviewer/tissues/ADR_only.bed
+bedtools intersect -a BRAIN_k27_rc.bed -b ADR_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed PANC_k27_rc.bed RPE_k27_rc.bed STOM_k27.bed VEN_k27_rc.bed -v > ../../processed/reviewer/tissues/BRAIN_only.bed
+bedtools intersect -a LIVER_k27_rc.bed -b ADR_k27_rc.bed BRAIN_k27_rc.bed LUNG_k27_rc.bed PANC_k27_rc.bed RPE_k27_rc.bed STOM_k27.bed VEN_k27_rc.bed -v > ../../processed/reviewer/tissues/LIVER_only.bed
+bedtools intersect -a LUNG_k27_rc.bed -b ADR_k27_rc.bed BRAIN_k27_rc.bed LIVER_k27_rc.bed PANC_k27_rc.bed RPE_k27_rc.bed STOM_k27.bed VEN_k27_rc.bed -v > ../../processed/reviewer/tissues/LUNG_only.bed
+bedtools intersect -a PANC_k27_rc.bed -b ADR_k27_rc.bed BRAIN_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed RPE_k27_rc.bed STOM_k27.bed VEN_k27_rc.bed -v > ../../processed/reviewer/tissues/PANC_only.bed
+bedtools intersect -a RPE_k27_rc.bed -b ADR_k27_rc.bed BRAIN_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed PANC_k27_rc.bed STOM_k27.bed VEN_k27_rc.bed -v > ../../processed/reviewer/tissues/RPE_only.bed
+bedtools intersect -a STOM_k27.bed -b ADR_k27_rc.bed BRAIN_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed PANC_k27_rc.bed RPE_k27_rc.bed VEN_k27_rc.bed -v > ../../processed/reviewer/tissues/STOM_only.bed
+bedtools intersect -a VEN_k27_rc.bed -b ADR_k27_rc.bed BRAIN_k27_rc.bed LIVER_k27_rc.bed LUNG_k27_rc.bed PANC_k27_rc.bed RPE_k27_rc.bed STOM_k27.bed -v > ../../processed/reviewer/tissues/VEN_only.bed
+```
+
+### Extract germ layers unique regions
+
+```bash
+cd ../../processed/reviewer/germ_layers
+
+bedtools intersect -a endoderm.bed -b mesoderm.bed ectoderm.bed -v | bedtools sort | bedtools merge > endoderm_final.bed
+bedtools intersect -a mesoderm.bed -b endoderm.bed ectoderm.bed -v | bedtools sort | bedtools merge > mesoderm_final.bed
+bedtools intersect -a ectoderm.bed -b endoderm.bed mesoderm.bed -v | bedtools sort | bedtools merge > ectoderm_final.bed
+```
+
+## Common peaks between in vivo and in vitro samples
+
+```bash
+# in vivo: germ_layers (final only) + tissues
+cd .. && cp germ_layers/*_final.bed invivo/ && cp tissues/* invivo/
+
+# intersection between in vivo and in vitro
+sh ../../../scripts/vitro_vivo_peaks.sh
+```
+
+# k27me3 Tissues (task 14)
+
+```bash
+cd ../data/raw/tissues_k27me3
+
+# germ layers
+cat PANC_k27me3_rc.bed LIVER_k27me3_rc.bed LUNG_k27me3_rc.bed STOM_k27me3.bed > ../../processed/reviewer/tissues_k27me3/germ_layers/endoderm.bed
+cat VEN_k27me3_rc.bed  ADR_k27me3_rc.bed > ../../processed/reviewer/tissues_k27me3/germ_layers/mesoderm.bed
+cat RPE_k27me3_rc.bed BRAIN_k27me3_rc.bed > ../../processed/reviewer/tissues_k27me3/germ_layers/ectoderm.bed
+
+# region specific
+bedtools intersect -a PANC_k27me3_rc.bed \
+  -b LIVER_k27me3_rc.bed LUNG_k27me3_rc.bed VEN_k27me3_rc.bed ADR_k27me3_rc.bed RPE_k27me3_rc.bed BRAIN_k27me3_rc.bed STOM_k27me3.bed -v > ../../processed/reviewer/tissues_k27me3/invivo/PANC_only.bed
+  
+bedtools intersect -a LIVER_k27me3_rc.bed \
+  -b PANC_k27me3_rc.bed LUNG_k27me3_rc.bed VEN_k27me3_rc.bed ADR_k27me3_rc.bed RPE_k27me3_rc.bed BRAIN_k27me3_rc.bed STOM_k27me3.bed -v > ../../processed/reviewer/tissues_k27me3/invivo/LIVER_only.bed
+
+bedtools intersect -a LUNG_k27me3_rc.bed \
+  -b PANC_k27me3_rc.bed LIVER_k27me3_rc.bed VEN_k27me3_rc.bed ADR_k27me3_rc.bed RPE_k27me3_rc.bed BRAIN_k27me3_rc.bed STOM_k27me3.bed -v > ../../processed/reviewer/tissues_k27me3/invivo/LUNG_only.bed
+
+bedtools intersect -a VEN_k27me3_rc.bed \
+  -b PANC_k27me3_rc.bed LIVER_k27me3_rc.bed LUNG_k27me3_rc.bed ADR_k27me3_rc.bed RPE_k27me3_rc.bed BRAIN_k27me3_rc.bed STOM_k27me3.bed -v > ../../processed/reviewer/tissues_k27me3/invivo/VEN_only.bed
+
+bedtools intersect -a ADR_k27me3_rc.bed \
+  -b PANC_k27me3_rc.bed LIVER_k27me3_rc.bed LUNG_k27me3_rc.bed VEN_k27me3_rc.bed RPE_k27me3_rc.bed BRAIN_k27me3_rc.bed STOM_k27me3.bed -v > ../../processed/reviewer/tissues_k27me3/invivo/ADR_only.bed
+
+bedtools intersect -a RPE_k27me3_rc.bed \
+  -b ADR_k27me3_rc.bed PANC_k27me3_rc.bed LIVER_k27me3_rc.bed LUNG_k27me3_rc.bed VEN_k27me3_rc.bed BRAIN_k27me3_rc.bed STOM_k27me3.bed -v > ../../processed/reviewer/tissues_k27me3/invivo/RPE_only.bed
+
+bedtools intersect -a BRAIN_k27me3_rc.bed \
+  -b ADR_k27me3_rc.bed PANC_k27me3_rc.bed LIVER_k27me3_rc.bed LUNG_k27me3_rc.bed VEN_k27me3_rc.bed RPE_k27me3_rc.bed STOM_k27me3.bed -v > ../../processed/reviewer/tissues_k27me3/invivo/BRAIN_only.bed
+
+bedtools intersect -a STOM_k27me3.bed \
+  -b ADR_k27me3_rc.bed PANC_k27me3_rc.bed LIVER_k27me3_rc.bed LUNG_k27me3_rc.bed VEN_k27me3_rc.bed RPE_k27me3_rc.bed BRAIN_k27me3_rc.bed -v > ../../processed/reviewer/tissues_k27me3/invivo/STOM_only.bed
+
+cd ../../processed/reviewer/tissues_k27me3/germ_layers
+bedtools intersect -a endoderm.bed -b mesoderm.bed ectoderm.bed -v | bedtools sort | bedtools merge > ../invivo/endoderm_final.bed
+bedtools intersect -a mesoderm.bed -b endoderm.bed ectoderm.bed -v | bedtools sort | bedtools merge > ../invivo/mesoderm_final.bed
+bedtools intersect -a ectoderm.bed -b endoderm.bed mesoderm.bed -v | bedtools sort | bedtools merge > ../invivo/ectoderm_final.bed
+
+# in vitro vs (germ layers and invitro)
+cd ..
+sh ../../../../scripts/vitro_vivo_peaks.sh
+```
+
+# Hhex (task 15)
+
+```bash
+cd ../data/processed/reviewer/tissues_hhex/
+sh ../../../../scripts/vitro_vivo_peaks.sh
+```
+

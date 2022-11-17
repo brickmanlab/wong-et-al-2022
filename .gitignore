@@ -1,0 +1,8 @@
+.DS_Store
+data/
+GEO/
+notebooks/.Rhistory
+reports/figures/
+*.smbdelete*
+*temp*
+*.pdf
